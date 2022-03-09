@@ -32,7 +32,7 @@ get_label = np.vectorize(_get_label)
 def main(train_dir: str, train_suf='**/*.bmp', n_train=60000, n_test=20000) \
         -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """ Load all training and test frames into memory. 
-    
+
     Frames are loaded as PIL objects, then converted to Torch's preferred image format
     as C x H x W (maybe C x W x H, the important thing is that C is first), then cast
     back to numpy for more streamlined (and less error-prone) handling, shuffling, etc...
@@ -40,26 +40,42 @@ def main(train_dir: str, train_suf='**/*.bmp', n_train=60000, n_test=20000) \
     Later, in main, this entire N x C x <W x H or H x W> array is
     converted back to a tensor with torch.from_numpy.
     """
-    fils = np.array(glob.glob(os.path.join(train_dir, train_suf), recursive=True))  # nopep8
-    lbls = get_label(fils)
+    assert n_train % 2 == 0  # required (for this script) to produce a balanced dataset
 
-    if n_train + n_test > len(fils):
+    _files_photo = np.random.shuffle(np.array(glob.glob(os.path.join(train_dir, 'photo', train_suf), recursive=True)))  # nopep8
+    _files_anime = np.random.shuffle(np.array(glob.glob(os.path.join(train_dir, 'anime', train_suf), recursive=True)))  # nopep8
+    _labels_photo = get_label(_files_photo)
+    _labels_anime = get_label(_files_anime)
+
+    if n_train / 2 + n_test / 2 > len(_files_photo) or n_train / 2 + n_test / 2 > len(_files_anime):
         raise ValueError(
             'Asked for more images in combined training and test data than available!')
 
-    shuffled = np.random.permutation(len(fils))
-    fils = fils[shuffled]
-    lbls = lbls[shuffled]
+    # get indicies of where to look for files/images so we have a balanced dataset
+    train_idx = n_train / 2
+    test_idx = (n_train + n_test) / 2
 
-    fils_trn = fils[0:n_train]
-    lbls_trn = lbls[0:n_train]
-    fils_tst = fils[n_train:n_train + n_test]
-    lbls_tst = lbls[n_train:n_train + n_test]
+    # concat photo and anime files/images and labels for each dataset
+    _files_train = np.concatenate([_files_photo[:train_idx], _files_anime[:train_idx]])  # nopep8
+    _files_test = np.concatenate([_files_photo[train_idx:test_idx], _files_anime[train_idx:test_idx]])  # nopep8
+    labels_train = np.concatenate([_labels_photo[:train_idx], _labels_anime[:train_idx]])  # nopep8
+    labels_test = np.concatenate([_labels_photo[train_idx:test_idx], _labels_anime[train_idx:test_idx]])  # nopep8
 
-    imgs_trn = open_img(fils_trn)
-    imgs_tst = open_img(fils_tst)
+    # shuffle train dataset
+    _shuffled_train = np.random.permutation(len(_files_train))
+    _files_train = _files_train[_shuffled_train]
+    labels_train = labels_train[_shuffled_train]
 
-    return torch.from_numpy(imgs_trn), torch.from_numpy(lbls_trn), torch.from_numpy(imgs_tst), torch.from_numpy(lbls_tst)
+    # shuffle test dataset
+    _shuffled_test = np.random.permutation(len(_files_test))
+    _files_test = _files_test[_shuffled_test]
+    labels_test = labels_test[_shuffled_test]
+
+    # open images
+    images_train = open_img(_files_train)
+    images_test = open_img(_files_test)
+
+    return torch.from_numpy(images_train), torch.from_numpy(labels_train), torch.from_numpy(images_test), torch.from_numpy(labels_test)
 
 
 if __name__ == '__main__':
