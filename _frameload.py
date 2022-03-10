@@ -42,8 +42,10 @@ def main(train_dir: str, train_suf='**/*.bmp', n_train=60000, n_test=20000) \
     """
     assert n_train % 2 == 0  # required (for this script) to produce a balanced dataset
 
-    _files_photo = np.random.shuffle(np.array(glob.glob(os.path.join(train_dir, 'photo', train_suf), recursive=True)))  # nopep8
-    _files_anime = np.random.shuffle(np.array(glob.glob(os.path.join(train_dir, 'anime', train_suf), recursive=True)))  # nopep8
+    _files_photo = np.array(glob.glob(os.path.join(train_dir, 'photo', train_suf), recursive=True))  # nopep8
+    _files_anime = np.array(glob.glob(os.path.join(train_dir, 'anime', train_suf), recursive=True))  # nopep8
+    np.random.shuffle(_files_photo)
+    np.random.shuffle(_files_anime)
     _labels_photo = get_label(_files_photo)
     _labels_anime = get_label(_files_anime)
 
@@ -52,8 +54,8 @@ def main(train_dir: str, train_suf='**/*.bmp', n_train=60000, n_test=20000) \
             'Asked for more images in combined training and test data than available!')
 
     # get indicies of where to look for files/images so we have a balanced dataset
-    train_idx = n_train / 2
-    test_idx = (n_train + n_test) / 2
+    train_idx = n_train // 2
+    test_idx = (n_train + n_test) // 2
 
     # concat photo and anime files/images and labels for each dataset
     _files_train = np.concatenate([_files_photo[:train_idx], _files_anime[:train_idx]])  # nopep8
