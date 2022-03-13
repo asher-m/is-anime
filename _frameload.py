@@ -17,7 +17,7 @@ def _open_img_mp(img):
         return totensor(pilimg).numpy()
 
 
-def open_img(imgs: str, processes=6) -> np.array:
+def open_img(imgs: str, processes) -> np.array:
     with mp.Pool(processes=processes) as pool:
         return np.stack(pool.map(_open_img_mp, imgs))
 
@@ -29,7 +29,7 @@ def _get_label(fname: str) -> float:
 get_label = np.vectorize(_get_label)
 
 
-def main(train_dir: str, train_suf='**/*.bmp', n_train=60000, n_test=20000) \
+def main(train_dir: str, train_suf='**/*.bmp', n_train=60000, n_test=20000, processes=8) \
         -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """ Load all training and test frames into memory. 
 
@@ -74,8 +74,8 @@ def main(train_dir: str, train_suf='**/*.bmp', n_train=60000, n_test=20000) \
     labels_test = labels_test[_shuffled_test]
 
     # open images
-    images_train = open_img(_files_train)
-    images_test = open_img(_files_test)
+    images_train = open_img(_files_train, processes=processes)
+    images_test = open_img(_files_test, processes=processes)
 
     return torch.from_numpy(images_train), torch.from_numpy(labels_train), torch.from_numpy(images_test), torch.from_numpy(labels_test)
 
