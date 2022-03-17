@@ -34,22 +34,19 @@ def build_command(finput, foutput):
     return command
 
 
-def main(pathtomovie='', mediatype=False):
+def main(pathtomovie='', outputdir=''):
     print('=' * 80)
     print(f'\tLooking in:\t\t\t{os.path.dirname(pathtomovie)}')
     print('=' * 80)
 
     fname = glob.glob(pathtomovie, recursive=True)
 
-    for f in fname:
-        outputsubdir = os.path.join(
-            OUTPUTDIR, 'anime' if mediatype is True else 'photo',
-            os.path.basename(os.path.splitext(f)[0]))
-        if not os.path.exists(outputsubdir):
-            os.mkdir(outputsubdir)
+    if not os.path.exists(outputdir):
+        os.mkdir(outputdir)
 
-        command = build_command(
-            f, os.path.join(outputsubdir, OUTPUTCODE))
+    for f in fname:
+        command = build_command(f, os.path.join(
+            outputdir, os.path.splitext(os.path.basename(f))[0] + '.' + OUTPUTCODE))
 
         with subprocess.Popen(command, stdout=subprocess.PIPE, bufsize=1, universal_newlines=True, shell=True) as p:
             for line in p.stdout:
@@ -64,7 +61,8 @@ if __name__ == '__main__':
     )
     parser.add_argument('pathtomovie', type=str,
                         help='glob string for movie name')
-    parser.add_argument('-a', '--anime', dest='mediatype', action='store_true',
-                        default=False, help='input media type')
+    parser.add_argument('outputdir', type=str,
+                        help='directory in which to dump frames',
+                        default='train/')
     kwargs = vars(parser.parse_args())
     main(**kwargs)
