@@ -11,37 +11,30 @@ import os
 import subprocess
 
 
-OUTPUTDIR = r'E:\Shared\git\is-anime\train\anime'
-OUTPUTCODE = r'%08d.bmp'
+OUTPUTDIR = './'
+OUTPUTCODE = '%05d.jpg'
 
 
-def build_command(finput, n_frames, foutput):
+def build_command(finput, foutput):
     command = list()
     command.extend([
+        r'ffmpeg.exe',  # symlink to (static!) ffmpeg in local dir
         r'E:\Shared\Downloads\ffmpeg-n5.0-latest-win64-gpl-5.0\bin\ffmpeg.exe',
         r'-i',
         finput,
-    ])
-
-    if n_frames > 1:
-        command.extend([
-            r'-r',
-            f'{n_frames}/1',
-        ])
-
-    command.extend([
+        r'-r',
+        r'1/1',  # force 1 fps input to 1 fps output
         r'-vf',
-        r'scale=128:128',
+        r'scale=512:512',  # need larger frame size for feature detection (maybe)
         foutput,
     ])
 
     return command
 
 
-def main(pathtomovie='', n_frames=4):
+def main(pathtomovie=''):
     print('=' * 80)
     print(f'\tLooking in:\t\t\t{os.path.dirname(pathtomovie)}')
-    print(f'\tSkipping frames:\t{n_frames}')
     print('=' * 80)
 
     fname = glob.glob(pathtomovie)
@@ -53,7 +46,7 @@ def main(pathtomovie='', n_frames=4):
             os.mkdir(outputsubdir)
 
         command = build_command(
-            f, n_frames, os.path.join(outputsubdir, '%08d.bmp'))
+            f, os.path.join(outputsubdir, '%05d.jpg'))
 
         with subprocess.Popen(command, stdout=subprocess.PIPE, bufsize=1, universal_newlines=True, shell=True) as p:
             for line in p.stdout:
@@ -68,7 +61,5 @@ if __name__ == '__main__':
     )
     parser.add_argument('pathtomovie', type=str,
                         help='glob string for movie name')
-    parser.add_argument('n_frames', type=int, default=4, nargs='?',
-                        help='dump a frame every <n_frames> frames')
     kwargs = vars(parser.parse_args())
     main(**kwargs)
