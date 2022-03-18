@@ -29,7 +29,7 @@ def _get_label(fname: str) -> float:
 get_label = np.vectorize(_get_label)
 
 
-def main(train_dir: str, train_suf='**/*.bmp', n_train=60000, n_test=20000, processes=8) \
+def main(train_dir: str, train_suf='**/*.jpg', n_train=4000, n_test=1000, processes=8) \
         -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """ Load all training and test frames into memory. 
 
