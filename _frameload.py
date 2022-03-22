@@ -137,9 +137,9 @@ class Frame(torch.utils.data.Dataset):
         # label them, turn them into something usable, then mix them
         shuffled = np.random.permutation(len(self._files_anime) + len(self._files_photo))  # nopep8
         self.labels = torch.concat(
-            [torch.from_numpy(get_label(self._files_photo)), torch.from_numpy(get_label(self._files_anime))])[shuffled]
+            [torch.from_numpy(get_label(self._files_photo)), torch.from_numpy(get_label(self._files_anime))])[shuffled].float()
         self.images = torch.concat(
-            [get_image(self._files_photo), get_image(self._files_anime)])[shuffled]
+            [get_image(self._files_photo), get_image(self._files_anime)])[shuffled].float()
 
     def refresh(self):
         # alias for self.reload
