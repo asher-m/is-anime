@@ -10,75 +10,137 @@ import torchvision
 
 
 totensor = torchvision.transforms.ToTensor()
+topilimage = torchvision.transforms.ToPILImage()
+transform_forward = torchvision.transforms.Compose([
+    torchvision.transforms.RandomCrop(384),
+    torchvision.transforms.Normalize([0.5] * 3, [0.5] * 3),
+])
+transform_backward = torchvision.transforms.Compose([
+    torchvision.transforms.Normalize([-1.] * 3, [2.] * 3),
+    torchvision.transforms.ToPILImage(),
+])
 
 
-def _open_img_mp(img):
+get_label = np.vectorize(lambda fname: 1. if 'anime' in fname else 0.)
+
+
+def _open_img_mp(img: str):
     with PIL.Image.open(img) as pilimg:
-        return totensor(pilimg).numpy()
+        return totensor(pilimg)
 
 
-def open_img(imgs: str, processes) -> np.array:
+def get_image(imgs: str, processes=6) -> np.array:
     with mp.Pool(processes=processes) as pool:
-        return np.stack(pool.map(_open_img_mp, imgs))
+        return torch.stack(pool.map(_open_img_mp, imgs))
 
 
-def _get_label(fname: str) -> float:
-    return 1. if 'anime' in fname else 0.
-
-
-get_label = np.vectorize(_get_label)
-
-
-def main(train_dir: str, train_suf='**/*.jpg', n_train=4000, n_test=1000, processes=8) \
-        -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """ Load all training and test frames into memory. 
-
-    Frames are loaded as PIL objects, then converted to Torch's preferred image format
-    as C x H x W (maybe C x W x H, the important thing is that C is first), then cast
-    back to numpy for more streamlined (and less error-prone) handling, shuffling, etc...
-
-    Later, in main, this entire N x C x <W x H or H x W> array is
-    converted back to a tensor with torch.from_numpy.
-    """
-    assert n_train % 2 == 0  # required (for this script) to produce a balanced dataset
-
+def get_files(train_dir: str, train_suf: str):
     _files_photo = np.array(glob.glob(os.path.join(train_dir, 'photo', train_suf), recursive=True))  # nopep8
     _files_anime = np.array(glob.glob(os.path.join(train_dir, 'anime', train_suf), recursive=True))  # nopep8
     np.random.shuffle(_files_photo)
     np.random.shuffle(_files_anime)
-    _labels_photo = get_label(_files_photo)
-    _labels_anime = get_label(_files_anime)
 
-    if n_train / 2 + n_test / 2 > len(_files_photo) or n_train / 2 + n_test / 2 > len(_files_anime):
-        raise ValueError(
-            'Asked for more images in combined training and test data than available!')
-
-    # get indicies of where to look for files/images so we have a balanced dataset
-    train_idx = n_train // 2
-    test_idx = (n_train + n_test) // 2
-
-    # concat photo and anime files/images and labels for each dataset
-    _files_train = np.concatenate([_files_photo[:train_idx], _files_anime[:train_idx]])  # nopep8
-    _files_test = np.concatenate([_files_photo[train_idx:test_idx], _files_anime[train_idx:test_idx]])  # nopep8
-    labels_train = np.concatenate([_labels_photo[:train_idx], _labels_anime[:train_idx]])  # nopep8
-    labels_test = np.concatenate([_labels_photo[train_idx:test_idx], _labels_anime[train_idx:test_idx]])  # nopep8
-
-    # shuffle train dataset
-    _shuffled_train = np.random.permutation(len(_files_train))
-    _files_train = _files_train[_shuffled_train]
-    labels_train = labels_train[_shuffled_train]
-
-    # shuffle test dataset
-    _shuffled_test = np.random.permutation(len(_files_test))
-    _files_test = _files_test[_shuffled_test]
-    labels_test = labels_test[_shuffled_test]
-
-    # open images
-    images_train = open_img(_files_train, processes=processes)
-    images_test = open_img(_files_test, processes=processes)
-
-    return torch.from_numpy(images_train), torch.from_numpy(labels_train), torch.from_numpy(images_test), torch.from_numpy(labels_test)
+    return _files_photo, _files_anime
 
 
-if __name__ == '__main__':
-    out = main('train/')
+class FrameFiles:
+    def __init__(self, train_dir='./train/', train_suf='**/*.jpg'):
+        # get all available files
+        self._files_photo, self._files_anime = get_files(train_dir, train_suf)
+
+        # initialize masks to not repick already allocateed files for other datasets
+        self._used_photo = np.zeros_like(self._files_photo, dtype=bool)
+        self._used_anime = np.zeros_like(self._files_anime, dtype=bool)
+
+        # initialize indices, nicer so we don't have to do this work many times
+        self._indices_photo = np.arange(len(self._files_photo))
+        self._indices_anime = np.arange(len(self._files_anime))
+
+        # dict to track uses of files; used to allocate/deallocate files when reloaded
+        self._allocated = dict()
+
+    def allocate(self, nfiles, name):
+        if not nfiles % 2 == 0:
+            raise ValueError(
+                'nfiles must be divisible by 2 to create balanced dataset!')
+
+        # pick new files from those that aren't used right now
+        picked_photo = np.random.choice(self._indices_photo[~self._used_photo], nfiles // 2, replace=False)  # nopep8
+        picked_anime = np.random.choice(self._indices_anime[~self._used_anime], nfiles // 2, replace=False)  # nopep8
+
+        # record what we're using and what we're using it for
+        self._used_photo[picked_photo] = True
+        self._used_anime[picked_anime] = True
+
+        # get what we just had allocated to this name
+        if name in self._allocated:
+            allocatement_old = self._allocated.pop(name)
+            self._used_photo[allocatement_old['photo']] = False
+            self._used_anime[allocatement_old['anime']] = False
+
+        # record what we're using
+        self._allocated[name] = dict(photo=picked_photo, anime=picked_anime)
+
+        return self._files_photo[picked_photo], self._files_anime[picked_anime]
+
+    def deallocate(self, name):
+        # get what we just had allocated to this name
+        if name in self._allocated:
+            allocatement_old = self._allocated.pop(name)
+            self._used_photo[allocatement_old['photo']] = False
+            self._used_anime[allocatement_old['anime']] = False
+
+
+class Frame(torch.utils.data.Dataset):
+    def __init__(self, files: FrameFiles, name: str, nfiles=4000, transform=transform_forward):
+        self.files = files
+        self.nfiles = nfiles
+        self.name = name
+        self.transform = transform
+        self.transform_target = None
+
+        # allocate some files from the underlying files
+        self._files_photo, self._files_anime = self.files.allocate(
+            self.nfiles, self.name)
+        # label them, turn them into something usable, then mix them
+        shuffled = np.random.permutation(len(self._files_anime) + len(self._files_photo))  # nopep8
+        self.labels = torch.concat(
+            [torch.from_numpy(get_label(self._files_photo)), torch.from_numpy(get_label(self._files_anime))])[shuffled].float()
+        self.images = torch.concat(
+            [get_image(self._files_photo), get_image(self._files_anime)])[shuffled].float()
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        image = self.images[idx]
+        label = self.labels[idx]
+
+        if self.transform:
+            image = self.transform(image)
+        if self.transform_target:
+            label = self.transform_target(label)
+
+        return image, label
+
+    def __del__(self):
+        self.files.deallocate(self.name)
+
+    def reload(self):
+        # cleanup old stuff, like make sure it's really, really gone
+        del self.images
+        del self.labels
+
+        # allocate some files from the underlying files
+        self._files_photo, self._files_anime = self.files.allocate(
+            self.nfiles, self.name)
+        # label them, turn them into something usable, then mix them
+        shuffled = np.random.permutation(len(self._files_anime) + len(self._files_photo))  # nopep8
+        self.labels = torch.concat(
+            [torch.from_numpy(get_label(self._files_photo)), torch.from_numpy(get_label(self._files_anime))])[shuffled]
+        self.images = torch.concat(
+            [get_image(self._files_photo), get_image(self._files_anime)])[shuffled]
+
+    def refresh(self):
+        # alias for self.reload
+        self.reload()
