@@ -1,6 +1,6 @@
 ffmpeg*
 model/
-train/
+train*/
 train.7z
 *.vscode
 
